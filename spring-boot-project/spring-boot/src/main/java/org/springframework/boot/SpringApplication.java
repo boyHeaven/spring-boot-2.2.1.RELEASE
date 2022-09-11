@@ -304,15 +304,20 @@ public class SpringApplication {
 		ConfigurableApplicationContext context = null;
 		Collection<SpringBootExceptionReporter> exceptionReporters = new ArrayList<>();
 		configureHeadlessProperty();
+		// 根据SPI获取针对run方法的监听器org.springframework.boot.SpringApplicationRunListener
+		// 通过观察者的模式实现
 		SpringApplicationRunListeners listeners = getRunListeners(args);
 		listeners.starting();
 		try {
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
 			// 准备环境，并且发布事件，配置文件的加载就在该方法内的ApplicationEnvironmentPreparedEvent事件
+			// 默认profile是default
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
 			configureIgnoreBeanInfo(environment);
 			Banner printedBanner = printBanner(environment);
+			// 根据ApplicationType创建Context
 			context = createApplicationContext();
+			// 启动发生错误时，回调自定义的ExceptionReporter报告器
 			exceptionReporters = getSpringFactoriesInstances(SpringBootExceptionReporter.class,
 					new Class[] { ConfigurableApplicationContext.class }, context);
 			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
@@ -347,6 +352,7 @@ public class SpringApplication {
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
 		ConfigurationPropertySources.attach(environment);
+		// 设置环境
 		listeners.environmentPrepared(environment);
 		bindToSpringApplication(environment);
 		if (!this.isCustomEnvironment) {
@@ -371,6 +377,7 @@ public class SpringApplication {
 	private void prepareContext(ConfigurableApplicationContext context, ConfigurableEnvironment environment,
 			SpringApplicationRunListeners listeners, ApplicationArguments applicationArguments, Banner printedBanner) {
 		context.setEnvironment(environment);
+		// 设置resourceLoader和classLoader等
 		postProcessApplicationContext(context);
 		applyInitializers(context);
 		listeners.contextPrepared(context);
@@ -426,9 +433,19 @@ public class SpringApplication {
 	}
 
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
+		/*
+			获取ClassLoader：最终就是LaunchedUrlClassLoader
+			1、如果resourceLoader不等于null，则取resourceLoader.getClassLoader
+			2、获取默认的classLoader，如果thread.applicationContextClassLoader不等于null则获取：App或者系统类加载器
+				在JarLauncher以及设置了LaunchedUrlClassLoader
+			3、否则获取ClassUtil.class.classLoader: 一般就是：misc.Launch.AppClassLoader
+			4、如果ClassUtil.class为null则获取SystemClassLoader
+		 */
 		ClassLoader classLoader = getClassLoader();
 		// Use names and ensure unique to protect against duplicates
+		// 获取spring.factories中的指定type的类名集合
 		Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+		// 创建names的类的实例，没有进行初始化
 		List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
 		AnnotationAwareOrderComparator.sort(instances);
 		return instances;
